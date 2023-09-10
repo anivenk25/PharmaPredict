@@ -4,9 +4,8 @@ from tensorflow import keras
 from rdkit import Chem
 from rdkit.Chem import DataStructs
 from rdkit.Chem.Fingerprints import FingerprintMols
-from rdkit.Chem import Draw
 import pubchempy as pcp
-import matplotlib.pyplot as plt
+
 
 # Define a function to compute the Tanimoto similarity between two molecules
 def compute_similarity(smiles1, smiles2):
@@ -21,6 +20,7 @@ def compute_similarity(smiles1, smiles2):
 
     return DataStructs.TanimotoSimilarity(fp1, fp2)
 
+
 # Define a function to get SMILES notation for a drug name
 def get_smiles_for_drug(drug_name):
     try:
@@ -33,32 +33,42 @@ def get_smiles_for_drug(drug_name):
 
             # Check if SMILES notation is available
             if compound.isomeric_smiles:
-                return compound.isomeric_smiles, compound.molecular_formula
+                return compound.isomeric_smiles
             else:
-                return "SMILES notation not found for this drug.", None
+                return "SMILES notation not found for this drug."
         else:
-            return "Drug not found in PubChem database.", None
+            return "Drug not found in PubChem database."
 
     except Exception as e:
-        return str(e), None
+        return str(e)
 
-# Function to predict DDI for a pair of drugs
-def predict_ddi_for_drugs(drug1_name, drug2_name, model_path):
-    # Get SMILES notations and molecular formulas for the drugs
-    drug1_smiles, drug1_formula = get_smiles_for_drug(drug1_name)
-    drug2_smiles, drug2_formula = get_smiles_for_drug(drug2_name)
 
-    if "SMILES notation not found" in (drug1_smiles, drug2_smiles):
-        return "SMILES notation not found for one or both drugs.", None, None
+# Define the Streamlit app
+st.set_page_config(
+    page_title="Drug-Drug Interaction Predictor",
+    page_icon="💊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+st.title("Drug-Drug Interaction Predictor")
+
+# Input fields for drug names
+drug1_name = st.text_input("Enter the name of Drug 1:")
+drug2_name = st.text_input("Enter the name of Drug 2:")
+
+if st.button("Predict Drug Interaction"):
+    # Get SMILES notation for the drugs
+    drug1_smiles = get_smiles_for_drug(drug1_name)
+    drug2_smiles = get_smiles_for_drug(drug2_name)
 
     # Compute the structural similarity score between the drug pair
     similarity_score = compute_similarity(drug1_smiles, drug2_smiles)
 
+    # Load the saved model
+    loaded_model = keras.models.load_model("ddi_model.h5")
+
     # Create an SSP feature vector (100 components as per your description)
     ssp_feature_vector = np.array([similarity_score] * 100)
-
-    # Load the saved model
-    loaded_model = keras.models.load_model(model_path)
 
     # Prepare input data for prediction (reshape the feature vector)
     input_data = ssp_feature_vector.reshape(1, -1)
@@ -157,71 +167,17 @@ def predict_ddi_for_drugs(drug1_name, drug2_name, model_path):
         84: "Drug1 may increase the vasodilatory activities of Drug2.",
         85: "Drug1 may increase the tachycardic activities of Drug2.",
         86: "The risk of a hypersensitivity reaction to Drug2 is increased when it is combined with Drug1."
-}
+    }
 
-    # Check if the predicted class label exists in the mapping dictionary
+    # Output the result with a blue and white theme
+    st.header("Prediction Result")
+    st.subheader(f"Drug 1: {drug1_name} (SMILES: {drug1_smiles})")
+    st.subheader(f"Drug 2: {drug2_name} (SMILES: {drug2_smiles})")
+    st.subheader(f"Predicted Class Label: {predicted_class}")
+
     if predicted_class in class_description_mapping:
         description = class_description_mapping[predicted_class]
+        st.subheader("Description:")
+        st.subheader(description)
     else:
-        description = "Predicted Class Label not found in the mapping."
-
-    # Generate molecular diagrams (if molecular formulas are available)
-    drug1_molecule = None
-    drug2_molecule = None
-    if drug1_smiles:
-        drug1_molecule = Chem.MolFromSmiles(drug1_smiles)
-    if drug2_smiles:
-        drug2_molecule = Chem.MolFromSmiles(drug2_smiles)
-
-    # Save molecular diagrams as images
-    drug1_image_path = "drug1_molecule.png"
-    drug2_image_path = "drug2_molecule.png"
-    if drug1_molecule:
-        Draw.MolToImage(drug1_molecule, size=(300, 300)).save(drug1_image_path)
-    if drug2_molecule:
-        Draw.MolToImage(drug2_molecule, size=(300, 300)).save(drug2_image_path)
-
-    return f"Drug 1: {drug1_name} (SMILES: {drug1_smiles}, Molecular Formula: {drug1_formula})\n" \
-           f"Drug 2: {drug2_name} (SMILES: {drug2_smiles}, Molecular Formula: {drug2_formula})\n" \
-           f"Predicted Class Label: {predicted_class}\n" \
-           f"Description: {description}", drug1_image_path, drug2_image_path
-
-# Create a Streamlit web app
-st.set_page_config(
-    page_title="Drug-Drug Interaction Prediction",
-    page_icon="💊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# Set the app title and description
-st.title("Drug-Drug Interaction Prediction")
-st.write(
-    "This app predicts drug-drug interactions (DDIs) and provides information about the drugs involved, "
-    "their SMILES notation, and a brief description of the interaction."
-)
-
-# Create input fields for drug names
-st.sidebar.header("Input Drugs")
-drug1_name = st.sidebar.text_input("Enter Drug 1 Name", "Aspirin")
-drug2_name = st.sidebar.text_input("Enter Drug 2 Name", "Ibuprofen")
-
-# Create a button to trigger prediction
-if st.sidebar.button("Predict DDI"):
-    # Path to the saved model
-    model_path = "ddi_model.h5"
-
-    # Make predictions for Drug-Drug Interaction
-    result, drug1_image_path, drug2_image_path = predict_ddi_for_drugs(drug1_name, drug2_name, model_path)
-
-    # Output the result
-    st.write(result)
-
-    # Display molecular diagrams (if available)
-    if drug1_image_path:
-        drug1_image = plt.imread(drug1_image_path)
-        st.image(drug1_image, caption=f"Molecular Diagram of {drug1_name}", use_column_width=True)
-
-    if drug2_image_path:
-        drug2_image = plt.imread(drug2_image_path)
-        st.image(drug2_image, caption=f"Molecular Diagram of {drug2_name}", use_column_width=True)
+        st.write("Predicted Class Label not found in the mapping.")
