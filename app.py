@@ -67,7 +67,7 @@ if st.button("Predict Drug Interaction"):
     # Load the saved model
     loaded_model = keras.models.load_model("ddi_model.h5")
 
-    # Create an SSP feature vector (100 components as per your description)
+    # Create an SSP feature vector (100 components)
     ssp_feature_vector = np.array([similarity_score] * 100)
 
     # Prepare input data for prediction (reshape the feature vector)
